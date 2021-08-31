@@ -1,4 +1,4 @@
-/* Version de l'algo avec la nouvelle preuve de shuffle */
+/* Version de l'algo avec la nouvelle preuve de shuffle de Groth et les cartes en struct*/
 
 extern crate curve25519_dalek;
 extern crate rand_core;
@@ -15,7 +15,7 @@ use rand::Rng;
 use std::convert::TryInto;
 use sha2::Sha512;
 
-
+/* Struct du vecteur c*/
 struct Chiffre {
     x : RistrettoPoint,
     y : RistrettoPoint,
@@ -26,6 +26,7 @@ struct Carte {
     valeur : u16,
 }
 
+/* struct pour la partie de l'argument de mélange de la preuve de Groth */
 struct Arg {
     c : RistrettoPoint,
     c_d : RistrettoPoint,
@@ -37,6 +38,7 @@ struct Arg {
     z_delta : Scalar,
 }
 
+/* Chaque struct Zk contient tous les éléments que le vérifieur a besoin */
 struct Zkrand {
     c : RistrettoPoint,
     cd : RistrettoPoint,
@@ -61,14 +63,6 @@ struct Zktheta {
     g : RistrettoPoint,
 }
 
-struct State {
-    alpha : u16,
-    suit : u16,
-    u : Vec<Vec<usize>>,
-}
-
-// Valeurs à mettre dans le struct : la carte id, la clé publique pk, le chiffre ch, t1, t2, z, g
-
 struct Zkpi0 {
     id : Carte,
     pk : RistrettoPoint,
@@ -78,8 +72,6 @@ struct Zkpi0 {
     z : Scalar,
     g : RistrettoPoint,
 }
-
-// Valeurs à retourner : g1, g2, pk1, pk2, y1, y2, z, c, l
 
 struct Zkpij {
     b : bool,
@@ -93,25 +85,14 @@ struct Zkpij {
     c : Vec<Scalar>,
 }
 
-fn setup(n : &usize) -> (Vec<RistrettoPoint>,RistrettoPoint) {
-    let mut rng = OsRng;
-    let mut g : Vec<RistrettoPoint> = Vec::new();
-    for i in 0..*n{
-        let gi = RistrettoPoint::random(&mut rng);
-        g.push(gi);
-    }
-    let h = RistrettoPoint::random(&mut rng);
-    (g,h)
+/* Structure permettant de suivre le bon déroulement du jeu */
+struct State {
+    alpha : u16,
+    suit : u16,
+    u : Vec<Vec<usize>>,
 }
 
-fn com(x : &Vec<Scalar>, r : &Scalar, g : &Vec<RistrettoPoint>, h : &RistrettoPoint) -> RistrettoPoint {
-    let mut res = r * h;
-    for i in 0..x.len(){
-        res = res + x[i] * g[i];
-    }
-    res
-}
-
+/* Fonction qui crée le deck de cartes */
 fn deck() -> Vec <Carte> {
     let mut deck : Vec <Carte> = Vec::new();
     for i in 0..52 {
@@ -123,12 +104,16 @@ fn deck() -> Vec <Carte> {
     deck
 }
 
+
+/* Fonction qui choisit aléatoirement un générateur g*/
 fn init() -> RistrettoPoint {
     let mut rng = OsRng;
     let g = RistrettoPoint::random(&mut rng);
     g
 }
 
+
+/* Fonction de génération des clés publiques en choississant aléatoirement une clé secrète */
 fn keygen(g : RistrettoPoint) -> (Scalar, RistrettoPoint){
     let mut rng = OsRng;
     let sk : Scalar = Scalar::random(&mut rng);
@@ -136,13 +121,15 @@ fn keygen(g : RistrettoPoint) -> (Scalar, RistrettoPoint){
     (sk,pk)
 }
 
+
+/* Fonction permettant de transformer les cartes qui sont des entiers en Scalar pour pouvoir faire des opérations avec des RistrettoPoint */
 fn fromcarte_to_nb(carte: &Carte) -> Scalar {
     let nb = carte.couleur * 100 + carte.valeur;
     let s : Scalar = Scalar::from(nb);
     s
 }
 
-
+/* Fonction qui va mélanger le deck de cartes et distribuer les cartes à la fin */
 fn gkeygen(mut ch : Vec <Chiffre> ,chiffre : &mut Vec<Chiffre>,  sk : &Vec <Scalar>, g : &RistrettoPoint, pkc : &RistrettoPoint) {
     let time2 = Instant::now();
     let mut rng = thread_rng();
@@ -177,7 +164,7 @@ fn gkeygen(mut ch : Vec <Chiffre> ,chiffre : &mut Vec<Chiffre>,  sk : &Vec <Scal
     }
 }
 
-// Fonction ou il y aura une preuve ZK en retour aussi
+// Fonction qui permet de mélanger le deck avec aussi la preuve de rand
 fn rand(ch : &mut Vec<Chiffre>, nums : &Vec<usize>, r : Vec<Scalar>, zk_r : &mut Vec<Zkrand>, g : &RistrettoPoint, pkc : &RistrettoPoint) {
     let mut ch2 : Vec <Chiffre> = Vec::new();
     for k in 0..52 {
@@ -189,6 +176,28 @@ fn rand(ch : &mut Vec<Chiffre>, nums : &Vec<usize>, r : Vec<Scalar>, zk_r : &mut
     *ch = ch2;
 }
 
+// Fonction qui choisit aléatoirement des générateurs pour les commitment de la preuve rand
+fn setup(n : &usize) -> (Vec<RistrettoPoint>,RistrettoPoint) {
+    let mut rng = OsRng;
+    let mut g : Vec<RistrettoPoint> = Vec::new();
+    for i in 0..*n{
+        let gi = RistrettoPoint::random(&mut rng);
+        g.push(gi);
+    }
+    let h = RistrettoPoint::random(&mut rng);
+    (g,h)
+}
+
+// Fonction qui calcule des vecteurs commitment de Pedersen
+fn com(x : &Vec<Scalar>, r : &Scalar, g : &Vec<RistrettoPoint>, h : &RistrettoPoint) -> RistrettoPoint {
+    let mut res = r * h;
+    for i in 0..x.len(){
+        res = res + x[i] * g[i];
+    }
+    res
+}
+
+/* Fonction qui effectue la preuve rand jusqu'au moment des calculs du vérifieur */
 fn zkrand(e : &Vec<Chiffre>, s : &Vec<Chiffre>, nums : &Vec<usize>, ra : &Vec<Scalar>, g : &RistrettoPoint, pkc : &RistrettoPoint) -> Zkrand {
     let n = nums.len();
     let mut rng = OsRng;
@@ -259,6 +268,7 @@ fn zkrand(e : &Vec<Chiffre>, s : &Vec<Chiffre>, nums : &Vec<usize>, ra : &Vec<Sc
     zkr
 }
 
+/* Fonction qui effectue la partie arg preuve rand jusqu'au moment des calculs du vérifieur */
 fn arg(c : &RistrettoPoint, nums : &Vec<usize>, r : &Scalar, m : &Vec<Scalar>, g : &Vec<RistrettoPoint>, h : &RistrettoPoint) -> Arg {
     let n = nums.len();
     let mut rng = OsRng;
@@ -319,6 +329,7 @@ fn arg(c : &RistrettoPoint, nums : &Vec<usize>, r : &Scalar, m : &Vec<Scalar>, g
     arg
 }
 
+/* Fonction qui permet au vérifieur de vérifier si la preuve rand est accepter */ 
 fn verirand(zkr : &Zkrand) -> u8 {
     let mut e = Scalar::hash_from_bytes::<Sha512>(zkr.arg.c_d.compress().as_bytes()) + Scalar::hash_from_bytes::<Sha512>(zkr.arg.c_delta.compress().as_bytes()) + Scalar::hash_from_bytes::<Sha512>(zkr.arg.c_a.compress().as_bytes());
     e = Scalar::hash_from_bytes::<Sha512>(e.as_bytes());
@@ -381,7 +392,8 @@ fn verirand(zkr : &Zkrand) -> u8 {
     }
     return 1
 }
-// Fonction ou il y aura une preuve ZK en retour aussi
+
+// Fonction de calcul des theta avec aussi la preuve ZK sur les theta
 fn caltheta(theta : &mut Vec <Vec<RistrettoPoint>> , ch : &Vec<Chiffre> , sk : Scalar , n : usize, piij : &mut Vec<Zktheta>) {
     let mut i = 0;
     let mut j = 0;
@@ -397,6 +409,7 @@ fn caltheta(theta : &mut Vec <Vec<RistrettoPoint>> , ch : &Vec<Chiffre> , sk : S
     }
 }
 
+/* Fonction qui effectue la preuve des theta jusqu'au moment des calculs du vérifieur */
 fn zktheta(theta : &RistrettoPoint, sk : &Scalar, g : &RistrettoPoint) -> Zktheta {
     let mut rng = OsRng;
     let r : Scalar = Scalar::random(&mut rng);
@@ -408,6 +421,7 @@ fn zktheta(theta : &RistrettoPoint, sk : &Scalar, g : &RistrettoPoint) -> Zkthet
     // Retourne dans une struct toutes les valeurs nécessaire pour la vérification
 }
 
+/* Fonction qui permet au vérifieur de vérifier si la preuve des theta est accepter */
 fn veritheta(zk : &Zktheta) -> u8 {
     let b = Scalar::hash_from_bytes::<Sha512>(zk.g.compress().as_bytes());
     if zk.z * zk.g == zk.y + b * zk.theta {
@@ -417,6 +431,7 @@ fn veritheta(zk : &Zktheta) -> u8 {
     }
 }
 
+/* Fonction qui fait en sorte que dans chaque chiffré il ne reste qu'une clé secrète correspondant au joueur à qui appartient la carte */
 fn calci(ch : &Vec<Chiffre> , theta : &Vec<Vec<RistrettoPoint>> , piij : &Vec<Zktheta>) -> Vec<Chiffre> {
     let mut ci : Vec <Chiffre> = Vec::new();
     let mut ind = vec![0usize; 3];
@@ -457,6 +472,7 @@ fn calci(ch : &Vec<Chiffre> , theta : &Vec<Vec<RistrettoPoint>> , piij : &Vec<Zk
     ci
 }
 
+/* Fonction qui permet de déchiffrer les cartes une par une */
 fn dec(ch : &Vec<Chiffre>, sk : &Scalar, deck : &Vec<Carte>, n : usize, g : &RistrettoPoint) -> Carte {
     let valeur = ch[n].y - (sk * ch[n].x);
     let mut card = Carte {couleur : 0, valeur : 0};
@@ -472,7 +488,7 @@ fn dec(ch : &Vec<Chiffre>, sk : &Scalar, deck : &Vec<Carte>, n : usize, g : &Ris
     card
 }
 
-// Fonction de déchiffrement permettant de reconstruire le deck de cartes mélangé
+// Fonction qui permet d'afficher les mains des quatre joueurs afin de vérifier le bon déroulement du jeu
 fn get_hand(deck : &Vec<Carte> , ch : &Vec<Chiffre> , sk : &Scalar , n : usize, g : &RistrettoPoint) {
     let mut decksor : Vec<Carte> = Vec::new();
     for i in 13*n..13*(n+1) {
@@ -483,15 +499,18 @@ fn get_hand(deck : &Vec<Carte> , ch : &Vec<Chiffre> , sk : &Scalar , n : usize, 
     println!();
 }
 
+/* Fonction d'affichage de n cartes */
 fn affichage(deck : &Vec<Carte>, n : usize){
     for i in 0..n {
         print!("{} , {}",deck[i].couleur,deck[i].valeur);
     }
 }
 
+/* Fonction de jeu où à chaque exécution une carte est jouée */
 fn play(n : &usize, sk : &Scalar, pk : &Vec<RistrettoPoint>, chiffre : &Vec<Chiffre>, state : &State, state2 : &mut State, deck : &Vec<Carte>, tour : &usize, g : &RistrettoPoint, jt : &mut Vec<usize>) -> (usize,Carte,Zkpi0,Vec<Zkpij>,Vec<usize>) {
     let mut rng = thread_rng();
     let mut t = rng.gen_range(0..jt.len());
+    /* boucle while qui fait en sorte que la carte que le joueur veut jouer n'a pas été déjà jouée ou avec laquelle il a déjà tenté de jouer ce tour-ci */
     while (ine(&state.u[*n],&jt[t]) == 1){
         jt.remove(t);
         t = rng.gen_range(0..jt.len());
@@ -536,6 +555,7 @@ fn play(n : &usize, sk : &Scalar, pk : &Vec<RistrettoPoint>, chiffre : &Vec<Chif
     (t,valeur,pi0,pij,l)
 }
 
+/* Fonction qui effectue la preuve pi0 jusqu'au moment des calculs du vérifieur */
 fn zkpi0(id : &Carte, pk : &RistrettoPoint, g : &RistrettoPoint, ch : &Chiffre, sk : &Scalar) -> Zkpi0 {
     let mut rng = OsRng;
     let r : Scalar = Scalar::random(&mut rng);
@@ -551,6 +571,7 @@ fn zkpi0(id : &Carte, pk : &RistrettoPoint, g : &RistrettoPoint, ch : &Chiffre, 
     // Valeurs à mettre dans le struct : la carte id, la clé publique pk, le chiffre ch, t1, t2, z, g
 }
 
+/* Fonction qui permet au vérifieur de vérifier si la preuve rand est accepter */ 
 fn veripi0(zk : Zkpi0) -> u8 {
     let pk2 = zk.ch.y - fromcarte_to_nb(&zk.id) * zk.g;
     let mut c = Scalar::hash_from_bytes::<Sha512>(zk.t1.compress().as_bytes()) + Scalar::hash_from_bytes::<Sha512>(zk.t2.compress().as_bytes());
@@ -562,6 +583,7 @@ fn veripi0(zk : Zkpi0) -> u8 {
     }
 }
 
+/* Fonction qui vérifie si une carte n'a pas déjà été jouée. Si c'est le cas elle retourne 1 */
 fn ine(v : &Vec<usize>, j : &usize) -> u8{
     let k : usize = *j;
     if v.is_empty() {
@@ -575,6 +597,7 @@ fn ine(v : &Vec<usize>, j : &usize) -> u8{
     return 0
 }
 
+/* Fonction qui effectue la preuve pij jusqu'au moment des calculs du vérifieur */
 fn zkpij(deck : &Vec<Carte>, l : &Vec<usize>, sk : &Scalar, pk : &RistrettoPoint, g : &RistrettoPoint, ch : &Chiffre, id : Carte) -> Zkpij {
     let mut rng = OsRng;
     let mut indice = 39usize;
@@ -620,6 +643,7 @@ fn zkpij(deck : &Vec<Carte>, l : &Vec<usize>, sk : &Scalar, pk : &RistrettoPoint
     pij
 }
 
+/* Fonction qui permet au vérifieur de vérifier si la preuve rand est accepter */ 
 fn veripij(pij : &Zkpij, deck : &Vec<Carte>, l : &Vec<usize>) -> u8 {
     let mut s = Scalar::zero();
     for i in 0..39 {
@@ -644,7 +668,9 @@ fn veripij(pij : &Zkpij, deck : &Vec<Carte>, l : &Vec<usize>) -> u8 {
     return 1
 }
 
+/* Fonction qui permet au vérifieur de vérifier si la carte que le joueur tente de jouer est jouable */ 
 fn verif(n : &usize, state : &State, state2 : &State, deck : &Vec<Carte>, tour : &usize, t : &usize, carte : &Carte, pi0 : Zkpi0, pij : &Vec<Zkpij>, l : &Vec<usize>, jt : &mut Vec<usize>) -> u8 {
+    /* Les quatre premières vérifications permettent de vérifier si il n'y a pas de problème dans state ou state2 */
     let mut i = 0;
     while i < 4 {
         if i == *n {
@@ -669,9 +695,11 @@ fn verif(n : &usize, state : &State, state2 : &State, deck : &Vec<Carte>, tour :
     if state.alpha != 4 && state.suit != 0 && (state2.alpha != state.alpha + 1||state2.suit != state.suit) {
         return 0;
     }
+    /* Vérifie si la carte est associée au bon joueur */
     if veripi0(pi0) == 0 {
         return 0
     }
+    /* Vérifie si le joueur a une carte de la couleur demandée si la carte qu'il veut jouer n'est pas de la bonne couleur */
     if (state2.suit != carte.couleur){
         for j in 0..13 {
             if pij[j].b == true {
@@ -685,6 +713,7 @@ fn verif(n : &usize, state : &State, state2 : &State, deck : &Vec<Carte>, tour :
     return 1;
 }
 
+/* Fonction qui permet de copier les éléments de state2 dans state */
 fn copy(state : &mut State, state2 : &State) {
     state.alpha = state2.alpha;
     state.suit = state2.suit;
@@ -705,12 +734,12 @@ fn main() {
         sk.push(a);
         pk.push(b);
     }
-    let mut pkc : RistrettoPoint = pk[0];// PK est la somme des 4 clés publiques
+    let mut pkc : RistrettoPoint = pk[0];// pkc est la somme des 4 clés publiques
     for i in 1..4{
         pkc = pkc + pk[i];
     }
-    let mut ch : Vec <Chiffre> = Vec::new();
-    let mut chiffre : Vec<Chiffre> = Vec::new();// ch correspnd au vecteur c dans le papier
+    let mut ch : Vec <Chiffre> = Vec::new();// ch correspnd au vecteur c dans le papier
+    let mut chiffre : Vec<Chiffre> = Vec::new();// chiffre correspnd au vecteur c dans le papier
     for i in 0..52 {
         let carte = Carte {couleur :deck[i].couleur , valeur :deck[i].valeur};
         let c : RistrettoPoint = pkc + g * fromcarte_to_nb(&carte);
@@ -737,6 +766,7 @@ fn main() {
             while veri == 0{
                 let (t,carte,pi0,pij,l) = play(&pre,&sk[pre],&pk,&chiffre,&state,&mut state2,&deck,&tour,&g,&mut jt);
                 veri = verif(&pre,&state,&state2,&deck,&tour,&t,&carte,pi0,&pij,&l,&mut jt);
+                /* Vérifications pour savoir au prochain tour quel va être le joueur à jouer en premier */
                 if n == 0 {
                         best = carte;
                         continue;
@@ -749,6 +779,7 @@ fn main() {
                         pl = pre;
                         continue;
                     }
+                    /* On suppose ici que la couleur Pique qui est la couleur dominante, est égale à 4 */
                     if carte.couleur == 4 && carte.couleur != best.couleur {
                         best = carte;
                         pl = pre;
