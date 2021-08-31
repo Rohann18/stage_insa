@@ -47,13 +47,6 @@ struct Zktheta {
     g : RistrettoPoint,
 }
 
-/* Structure permettant de suivre le bon déroulement du jeu */
-struct State {
-    alpha : u16,
-    suit : u16,
-    u : Vec<Vec<usize>>,
-}
-
 struct Zkpi0 {
     id : Carte,
     pk : RistrettoPoint,
@@ -74,6 +67,13 @@ struct Zkpij {
     y2 : Vec<RistrettoPoint>,
     z : Vec<Scalar>,
     c : Vec<Scalar>,
+}
+
+/* Structure permettant de suivre le bon déroulement du jeu */
+struct State {
+    alpha : u16,
+    suit : u16,
+    u : Vec<Vec<usize>>,
 }
 
 /* Fonction qui crée le deck de cartes */
@@ -234,7 +234,7 @@ fn verirand(zkr : &Vec<Zkrand>) -> u8 {
     return 1
 }
 
-// Fonction de calculs des theta avec aussi la preuve ZK sur les theta
+// Fonction de calcul des theta avec aussi la preuve ZK sur les theta
 fn caltheta(theta : &mut Vec <Vec<RistrettoPoint>> , ch : &Vec<Chiffre> , sk : Scalar , n : usize, piij : &mut Vec<Zktheta>) {
     let mut i = 0;
     let mut j = 0;
